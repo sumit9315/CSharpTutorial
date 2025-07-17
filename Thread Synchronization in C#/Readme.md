@@ -146,6 +146,412 @@ Thread 11 completed!
 
 Would you like similar examples for Monitor, ManualResetEvent, etc., in the same format?
 
+Great! Let's walk through a complete and detailed example demonstrating:
+
+* What happens when you don’t use thread synchronization
+* Then how each synchronization method—lock, Monitor, ManualResetEvent, AutoResetEvent, Mutex, and Semaphore—fixes the issue
+* For each: step-by-step explanation, full working code, sample output, benefits, drawbacks, and when to use
+
+We’ll use this simple goal:
+🧪 Simulate 5 threads accessing the same method that prints:
+
+* Thread X starting
+* Thread X completed
+
+We will then control how those threads access that method using different synchronization techniques.
+
+---
+
+## 1️⃣ Without Any Synchronization (Race Condition Example)
+
+🧠 Problem: Multiple threads access critical section simultaneously = unpredictable output
+
+🔧 Code:
+
+```csharp
+using System;
+using System.Threading;
+
+class Program
+{
+    public static void DoWork()
+    {
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} starting...");
+        Thread.Sleep(1000); // Simulate work
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} completed.");
+    }
+
+    static void Main()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            Thread t = new Thread(DoWork);
+            t.Start();
+        }
+
+        Console.ReadLine();
+    }
+}
+```
+
+📤 Output (varies every time):
+
+```
+Thread 5 starting...
+Thread 6 starting...
+Thread 7 starting...
+Thread 8 starting...
+Thread 9 starting...
+Thread 5 completed.
+Thread 6 completed.
+Thread 8 completed.
+Thread 7 completed.
+Thread 9 completed.
+```
+
+⚠️ Issue: All threads enter DoWork at once — results can interleave and cause confusion (imagine shared file or DB)
+
+---
+
+## 2️⃣ Using lock
+
+🧠 Fix: Only one thread can enter the critical section at a time
+
+🔧 Code:
+
+```csharp
+using System;
+using System.Threading;
+
+class Program
+{
+    private static readonly object locker = new object();
+
+    public static void DoWork()
+    {
+        lock (locker)
+        {
+            Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} starting...");
+            Thread.Sleep(1000);
+            Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} completed.");
+        }
+    }
+
+    static void Main()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            Thread t = new Thread(DoWork);
+            t.Start();
+        }
+
+        Console.ReadLine();
+    }
+}
+```
+
+📤 Output (predictable):
+
+```
+Thread 5 starting...
+Thread 5 completed.
+Thread 6 starting...
+Thread 6 completed.
+Thread 7 starting...
+Thread 7 completed.
+Thread 8 starting...
+Thread 8 completed.
+Thread 9 starting...
+Thread 9 completed.
+```
+
+✅ Benefit: Simple and clean way to lock code
+❌ Drawback: Works only with tightly scoped code blocks
+📌 Use when: Critical section is small and self-contained
+
+---
+
+## 3️⃣ Using Monitor
+
+🧠 Fix: Like lock but more flexible (can put exit in finally block)
+
+🔧 Code:
+
+```csharp
+using System;
+using System.Threading;
+
+class Program
+{
+    private static readonly object locker = new object();
+
+    public static void DoWork()
+    {
+        Monitor.Enter(locker);
+        try
+        {
+            Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} starting...");
+            Thread.Sleep(1000);
+            Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} completed.");
+        }
+        finally
+        {
+            Monitor.Exit(locker);
+        }
+    }
+
+    static void Main()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            Thread t = new Thread(DoWork);
+            t.Start();
+        }
+
+        Console.ReadLine();
+    }
+}
+```
+
+📤 Output: Same as lock, but more control
+
+✅ Benefit: Use finally to ensure unlock even on exception
+❌ Drawback: Verbose
+📌 Use when: You need full try-catch-finally logic
+
+---
+
+## 4️⃣ Using ManualResetEvent
+
+🧠 Fix: One thread works → when done, signals all waiting threads
+
+🔧 Code:
+
+```csharp
+using System;
+using System.Threading;
+
+class Program
+{
+    private static ManualResetEvent mre = new ManualResetEvent(false);
+
+    public static void Read()
+    {
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} waiting...");
+        mre.WaitOne(); // Wait for signal
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} reading...");
+        Thread.Sleep(1000);
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} completed.");
+    }
+
+    public static void Write()
+    {
+        Console.WriteLine("Writer thread writing...");
+        Thread.Sleep(2000); // Simulate writing
+        Console.WriteLine("Writer completed. Releasing all readers...");
+        mre.Set(); // Allow all to proceed
+    }
+
+    static void Main()
+    {
+        Thread writer = new Thread(Write);
+        writer.Start();
+
+        for (int i = 0; i < 5; i++)
+        {
+            Thread reader = new Thread(Read);
+            reader.Start();
+        }
+
+        Console.ReadLine();
+    }
+}
+```
+
+📤 Output:
+
+```
+Writer thread writing...
+Thread 6 waiting...
+Thread 7 waiting...
+Thread 8 waiting...
+Thread 9 waiting...
+Thread 10 waiting...
+Writer completed. Releasing all readers...
+Thread 6 reading...
+Thread 7 reading...
+Thread 8 reading...
+Thread 9 reading...
+Thread 10 reading...
+```
+
+✅ Benefit: One thread unblocks many
+❌ Drawback: All threads proceed at once (can overload shared resource)
+📌 Use when: One signal should allow all to go
+
+---
+
+## 5️⃣ Using AutoResetEvent
+
+🧠 Fix: Like ManualResetEvent but wakes only one thread at a time
+
+🔧 Code:
+
+```csharp
+using System;
+using System.Threading;
+
+class Program
+{
+    private static AutoResetEvent are = new AutoResetEvent(true); // Start with signaled state
+
+    public static void DoWork()
+    {
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} waiting...");
+        are.WaitOne();
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} starting...");
+        Thread.Sleep(1000);
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} completed.");
+        are.Set(); // Signal next thread
+    }
+
+    static void Main()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            Thread t = new Thread(DoWork);
+            t.Start();
+        }
+
+        Console.ReadLine();
+    }
+}
+```
+
+📤 Output:
+
+```
+Thread 5 waiting...
+Thread 5 starting...
+Thread 6 waiting...
+Thread 5 completed.
+Thread 6 starting...
+Thread 6 completed.
+Thread 7 starting...
+...
+```
+
+✅ Benefit: Releases threads one by one
+❌ Drawback: Easy to misuse set/reset, no ownership enforcement
+📌 Use when: You want to control access serially
+
+---
+
+## 6️⃣ Using Mutex
+
+🧠 Fix: Like lock but OS-level, works across processes
+
+🔧 Code:
+
+```csharp
+using System;
+using System.Threading;
+
+class Program
+{
+    private static Mutex mutex = new Mutex();
+
+    public static void DoWork()
+    {
+        mutex.WaitOne(); // Lock
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} starting...");
+        Thread.Sleep(1000);
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} completed.");
+        mutex.ReleaseMutex(); // Unlock
+    }
+
+    static void Main()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            Thread t = new Thread(DoWork);
+            t.Start();
+        }
+
+        Console.ReadLine();
+    }
+}
+```
+
+📤 Output: Same as lock
+
+✅ Benefit: Can be named, works across processes
+❌ Drawback: Slower than lock, requires explicit release
+📌 Use when: You need cross-process locking
+
+---
+
+## 7️⃣ Using Semaphore
+
+🧠 Fix: Allow N threads simultaneously
+
+🔧 Code:
+
+```csharp
+using System;
+using System.Threading;
+
+class Program
+{
+    private static Semaphore semaphore = new Semaphore(2, 2); // Allow 2 threads at a time
+
+    public static void DoWork()
+    {
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} waiting...");
+        semaphore.WaitOne(); // Try to enter
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} starting...");
+        Thread.Sleep(1000);
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} completed.");
+        semaphore.Release(); // Exit
+    }
+
+    static void Main()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            Thread t = new Thread(DoWork);
+            t.Start();
+        }
+
+        Console.ReadLine();
+    }
+}
+```
+
+📤 Output:
+
+```
+Thread 5 waiting...
+Thread 6 waiting...
+Thread 5 starting...
+Thread 6 starting...
+Thread 7 waiting...
+Thread 5 completed.
+Thread 8 waiting...
+Thread 6 completed.
+Thread 7 starting...
+Thread 7 completed.
+Thread 8 starting...
+...
+```
+
+✅ Benefit: Control how many threads run concurrently
+❌ Drawback: Risk of deadlocks if Release not called
+📌 Use when: Limited resources (e.g., DB connections, threads)
+
+---
+
+Would you like all 7 examples saved into a downloadable file (e.g., .cs or .txt)?
 
 ## 🔐 1. lock Keyword
 

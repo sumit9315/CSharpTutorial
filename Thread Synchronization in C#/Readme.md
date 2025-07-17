@@ -8,6 +8,145 @@ When multiple threads try to access shared resources (like a file, variable, or 
 
 ---
 
+Perfect! Let's simulate a very simple example without using a counter. Instead, we’ll have multiple threads printing:
+
+* "Thread X starting..."
+* Simulate work (Thread.Sleep)
+* "Thread X completed!"
+
+You’ll see how threads interleave when synchronization is not used vs when it is.
+
+🔹 Goal: Understand the difference in behavior/output
+
+---
+
+🧪 Scenario 1: No Synchronization
+
+Each thread runs this:
+
+```csharp
+public static void DoWork()
+{
+    Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} starting...");
+    Thread.Sleep(1000);
+    Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} completed!");
+}
+```
+
+🔧 Main Program (No Lock):
+
+```csharp
+using System;
+using System.Threading;
+
+class NoLockExample
+{
+    public static void DoWork()
+    {
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} starting...");
+        Thread.Sleep(1000); // Simulate work
+        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} completed!");
+    }
+
+    static void Main()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            Thread t = new Thread(DoWork);
+            t.Start();
+        }
+
+        Console.ReadLine(); // Keep console open
+    }
+}
+```
+
+🧾 Possible Output (No Lock, threads run in parallel):
+
+```
+Thread 7 starting...
+Thread 8 starting...
+Thread 9 starting...
+Thread 10 starting...
+Thread 11 starting...
+Thread 8 completed!
+Thread 9 completed!
+Thread 7 completed!
+Thread 10 completed!
+Thread 11 completed!
+```
+
+🟡 The threads start in any order and complete in any order → Unpredictable.
+
+---
+
+✅ Scenario 2: With Lock Synchronization
+
+Add a lock so that only one thread prints at a time:
+
+```csharp
+using System;
+using System.Threading;
+
+class LockExample
+{
+    static object locker = new object();
+
+    public static void DoWork()
+    {
+        lock (locker)
+        {
+            Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} starting...");
+            Thread.Sleep(1000); // Simulate work
+            Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} completed!");
+        }
+    }
+
+    static void Main()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            Thread t = new Thread(DoWork);
+            t.Start();
+        }
+
+        Console.ReadLine();
+    }
+}
+```
+
+🧾 Output (With Lock):
+
+```
+Thread 7 starting...
+Thread 7 completed!
+Thread 8 starting...
+Thread 8 completed!
+Thread 9 starting...
+Thread 9 completed!
+Thread 10 starting...
+Thread 10 completed!
+Thread 11 starting...
+Thread 11 completed!
+```
+
+✅ Now, one thread finishes its full job before another one starts.
+
+🎯 Clear, predictable, easy to debug and safe.
+
+---
+
+🎉 Summary
+
+|                | Without Lock               | With Lock                                 |
+| -------------- | -------------------------- | ----------------------------------------- |
+| Output Order   | Mixed, interleaved         | Sequential, one after the other           |
+| Thread Safety  | ❌ Race condition possible  | ✅ Thread-safe                             |
+| Real-world use | Rarely safe, hard to debug | Preferred when accessing shared resources |
+
+Would you like similar examples for Monitor, ManualResetEvent, etc., in the same format?
+
+
 ## 🔐 1. lock Keyword
 
 💡 Purpose: Simplest way to lock a critical section so only one thread can execute it at a time.
